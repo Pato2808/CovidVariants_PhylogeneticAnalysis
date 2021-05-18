@@ -1,0 +1,155 @@
+---
+title: "Entregable 2: Reto Biología Computacional"
+author: "Patricio Mendoza | A00830337"
+date: "02/05/2021"
+output: html_document
+---
+
+1- Se seleccionaron 20 secuencias de SARS-CoV-2 reportadas en los 20 países con más casos reportados. Dichos países son EUA, India, Brasil, Francia, Turquia, Rusia, Reino Unido, Italia, España, Alemania, Argentina, Colombia, Polonia, Iran, Mexico, Peru, Indonesia, Republica Checa, Sudafrica y Paises Bajos. Tambien se tomo en consideración la primera variante del SARS-COV-2, la cual aparecio en Wuhan, China. Las secuencias fueron extraidas de la base de datos de NCBI. 
+
+Primero incluimos las librerias que vamos a utilizar para este analisis.
+```{r message=FALSE,warning = FALSE}
+library(Biostrings)
+library(seqinr)
+library(adegenet)
+library(ape)
+library(ggtree)
+library(DECIPHER)
+library(viridis)
+library(ggplot2)
+library(ggmsa)
+```
+Creamos variables para almacenar el lugar y fecha de las secuencias a analizar. Despues obtenemos y almacenamos en un archivo formato FASTA las secuencias de cada virus utilizando la libreria ape.
+```{r}
+lugares = c("Wuhan, China / 18-MAR-2020","EUA / 30-APR-2021", "India / 15-APR-2021", "Brasil / 11-FEB-2021", "Francia / 23-APR-2021", "Turquia / 12-MAR-2021", "Rusia / 28-APR-2021", "Reino Unido / 23-APR-2021", "Italia / 02-APR-2021", "España / 31-MAR-2021", "Alemania / 29-MAR-2021", "Argentina / 19-FEB-2021", "Colombia / 14-MAY-2020", "Polonia / 28-APR-2021", "Iran / 19-APR-2021", "Mexico / 08-APR-2021", "Peru / 16-APR-2021", "Indonesia / 26-APR-2021", "Rep. Checa / 29-MAY-2020", "Sudafrica / 21-APR-2021", "Paises Bajos / 01-MAR-2021")
+virus = c("MZ057973","MW927136","MW592707","HG993785","MW308549",
+          "MZ047312","OB994371","MW852494","FR989825","MW822592",
+          "MW633892","MT470219","MZ047082","MW737421","MW884219",
+          "MW938089","MZ026853","MT534285","MW981442","LR883015")
+virus_sequences = read.GenBank(virus)
+write.dna(virus_sequences, file="virus_sequences.fasta", format="fasta",
+          append=FALSE, nbcol=6, colsep="", colw=10)
+list_sequences = read.fasta("virus_sequences.fasta")
+
+for(i in 1:length(virus)){
+  names(list_sequences)[i] = lugares[i]
+}
+```
+2- Calcula la longitud de las secuencias que incluyas.
+```{r}
+for(i in names(list_sequences)){
+  cat('\n',"Variante:",i,"Longitud:",length(list_sequences[[i]]))
+}
+```
+3- Crea una sola gráfica donde se comparen el número de bases de ADN que componen todas las variantes del virus.
+```{r}
+porNuc<-function(y={''}){
+  sumA = 0
+  sumC = 0
+  sumG = 0
+  sumT = 0
+  sumN = 0
+  for(i in y){
+    if(i == "a"){
+      sumA = sumA + 1
+    } else if(i == "c"){
+      sumC = sumC + 1
+    } else if(i == "t"){
+      sumT = sumT + 1
+    } else if(i == "g"){
+      sumG = sumG + 1
+    } else if(i == "n"){
+      sumN = sumN + 1
+    }
+  }
+  return(list(Adenina=sumA*100/length(y),Timina=sumT*100/length(y),Guanina=sumG*100/length(y),Citosina=sumC*100/length(y),Desconocidos = sumN*100/length(y)))
+}
+
+opar <- par(oma = c(2,0,0,0))
+par(mfrow=c(3,2),mar=c(2,2,2,2))
+for(i in c('Adenina','Timina','Guanina','Citosina',"Desconocidos")){
+  y = c()
+  for(j in 1:length(virus)){
+    y<-c(y,porNuc(list_sequences[[j]])[[i]])
+  }
+    barplot(y,col=c("darkgreen",'purple','red','pink','brown',"black",'gray','blue','lightblue','orange3',"yellowgreen",'aquamarine','wheat','turquoise','gold',"sandybrown",'lightgreen','violetred4','antiquewhite3','indianred'),main=i)
+}
+par(opar)
+opar=par(oma = c(0,0,0,0), mar = c(0,0,0,0), new = TRUE)
+legend(x = "left", legend = names(list_sequences)[1:10], fill=c("darkgreen",'purple','red','pink','brown',"black",'gray','blue','lightblue','orange3'),cex=0.85)
+legend(x = "right", legend = names(list_sequences)[11:20], fill=c("yellowgreen",'aquamarine','wheat','turquoise','gold',"sandybrown",'lightgreen','violetred4','antiquewhite3','indianred'),cex=0.85)
+```
+
+4- Agrega un análisis jerárquico global obtenido de las secuencias que se seleccionaron para estudiar.
+```{r results = "hide"}
+virus_seq_notaligned = readDNAStringSet("virus_sequences.fasta",format = "fasta")
+virus_seq_notaligned = OrientNucleotides(virus_seq_notaligned)
+virus_seq_aligned = AlignSeqs(virus_seq_notaligned)
+#Guardar secuiancias alineadas en FASTA y leerlo
+writeXStringSet(virus_seq_aligned, file="virus_seq_aligned.fasta")
+virus_aligned = read.alignment("virus_seq_aligned.fasta", format = "fasta")
+#creamos la matriz de distancia
+matriz_dist = dist.alignment(virus_aligned, matrix = "similarity")
+#Creacion del arbol filogenetico
+virus_tree = nj(matriz_dist)
+virus_tree = ladderize(virus_tree)
+#Cambiamos los labels de el arbol por los nombres de los paises de donde son las muestras
+for(i in 1:length(virus)){
+  virus_tree$tip.label[i] = lugares[i]
+}
+```
+```{r}
+#Ploteamos
+ggtree(virus_tree,size = 1) + geom_tiplab(size = 3)
+```
+
+5- Conclusiones y reflexión
+
+Como podemos observar en las gráficas, la composición de las secuencias de nucleotidos de cada una de las variantes del SARS-COV-2 en los diferentes países son prácticamente iguales pero al observar el árbol filogenetico generado al comparar dichas secuencias, podemos encontrar tanto variantes muy cercanas a otras como también muy distantes entre ellas, lo que indica que el orden de los nucleotidos si esta alterado y en ciertos casos esa alteración es bastante con respecto al original. Una vez dicho esto, podemos inferir que si bien la composición de nucleotidos del SARS-COV-2 no se altera generarse una mutacion, si se altera el orden de las secuencias, lo que puede llegar a producir que los aminoácidos que constituyen al virus se alteren pues como sabemos dichos aminoácidos son producto del conjunto de 3 nucleoitdos en una secuencia llamados codones. Tomando lo antes declarado como base, podemos deducir que una pequeña alteración en los genes de un organismo puede generar mutaciones que alteren en buena parte las funciones del organismo. Esto podría llegar a ser peligroso pues las mutaciones son algo común en la naturaleza y si llegase a ocurrir alguna que haga que por ejemplo un virus se vuelva inmune a los tratamientos existentes para dicho organismo y esto podria significar miles de muertes como estamos viendo actualmente con el SARS-COV-2 o aun peor.
+
+#### Bibliografia
+
+Nucleotidos
+
+- National Center for Biotechnology Information. (2020). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MZ057973
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MW927136
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MW592707
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/HG993785
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MW308549
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MZ047312
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/OB994371
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MW852494
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/FR989825
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MW822592
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MW633892
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MT470219
+- National Center for Biotechnology Information. (2020). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MZ047082
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MW737421
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MW884219
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MW938089
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MZ026853
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MT534285
+- National Center for Biotechnology Information. (2020). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/MW981442
+- National Center for Biotechnology Information. (2021). Severe acute respiratory syndrome coronavirus 2, complete genome [base de datos]. https://www.ncbi.nlm.nih.gov/nuccore/LR883015
+
+Bibliotecas
+
+- H. Pagès, P. Aboyoun, R. Gentleman and S. DebRoy (2020). Biostrings: Efficient
+  manipulation of biological strings. R package version 2.58.0.
+  https://bioconductor.org/packages/Biostrings
+- Charif, D. and Lobry, J.R. (2007)
+- Jombart, T. (2008) adegenet: a R package for the multivariate analysis of genetic
+  markers. Bioinformatics 24: 1403-1405. doi: 10.1093/bioinformatics/btn129
+- Paradis E. & Schliep K. 2019. ape 5.0: an environment for modern phylogenetics and
+  evolutionary analyses in R. Bioinformatics 35: 526-528.
+- Guangchuang Yu, Tommy Tsan-Yuk Lam, Huachen Zhu, Yi Guan. Two methods for mapping and
+  visualizing associated data on phylogeny using ggtree. Molecular Biology and Evolution
+  2018, 35(2):3041-3043. doi: 10.1093/molbev/msy194
+- Wright ES (2016). “Using DECIPHER v2.0 to Analyze Big Biological Sequence Data in R.”
+- Simon Garnier, Noam Ross, Robert Rudis, Antônio P. Camargo, Marco Sciaini, and Cédric
+  Scherer (2021). Rvision - Colorblind-Friendly Color Maps for R. R package version
+  0.6.0.
+- H. Wickham. ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York,
+  2016.
+- Guangchuang Yu and Lang Zhou (2021). ggmsa: Plot Multiple Sequence Alignment using
+  'ggplot2'. R package version 0.0.6. https://CRAN.R-project.org/package=ggmsa
